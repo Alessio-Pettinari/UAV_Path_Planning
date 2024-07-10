@@ -19,6 +19,7 @@ import wayPoint_fitting
 ocp = Ocp(T=FreeTime(10.0))  # FreeTime()--> dichiara il tempo finale (pari a 10) inizialmente, ma poi sarà soggetto all'ottimizzazione stessa (cioè il tempo finale verrà det come parte della soluzione dell'ottimizzazione)
 
 # Parameters
+N = 40 # num of sample
 p0_value = np.array([0, 0, 2])
 r0_val = 1
 r_uav = 1
@@ -31,22 +32,20 @@ K_dist = 10
 x = ocp.state()
 y = ocp.state()
 z = ocp.state()
-x_dot = ocp.state()
-y_dot = ocp.state()
-z_dot = ocp.state()
+psi = ocp.state()     # yaw angle
+theta = ocp.state()   # pitch angle
 
-ax = ocp.control()
-ay = ocp.control()
-az = ocp.control()
+w_psi = ocp.control()   # yaw_dot
+w_theta = ocp.control() # pitch_dot
+v = ocp.control()
 
 # Space-State form
-ocp.set_der(x, x_dot)
-ocp.set_der(y, y_dot)
-ocp.set_der(z, z_dot)
+ocp.set_der(x, v*cos(psi)*cos(theta))
+ocp.set_der(y, v*sin(psi)*cos(theta))
+ocp.set_der(z, v*sin(theta))                 
 
-ocp.set_der(x_dot, ax)
-ocp.set_der(y_dot, ay)
-ocp.set_der(z_dot, az)
+ocp.set_der(psi, w_psi)
+ocp.set_der(theta, w_theta)
 
 
 # Problem Parameters
@@ -56,16 +55,17 @@ p = vertcat(x,y,z)
 fitPts = ocp.parameter(3, grid='control')
 
 
-
 # Initial constraints
-ocp.subject_to(ocp.at_t0(x)== -2) #-2
-ocp.subject_to(ocp.at_t0(y)== -2)  #-2
+ocp.subject_to(ocp.at_t0(x)== -5) #-2 
+ocp.subject_to(ocp.at_t0(y)== -8) #-2
 ocp.subject_to(ocp.at_t0(z)== 1)
 
 # Final constraint
-ocp.subject_to(ocp.at_tf(x)== 5)
-ocp.subject_to(ocp.at_tf(y)== 8) #2
+ocp.subject_to(ocp.at_tf(x)== 8) #5
+ocp.subject_to(ocp.at_tf(y)== -3) #8
 ocp.subject_to(ocp.at_tf(z)== 2)
+
+ocp.subject_to(-0.5 <= (theta<= 0.5))  # pitch constraint
 
 
 ## set_initial--> viene utilizzato per fornire un valore iniziale suggerito per le variabili di stato e di controllo.
@@ -83,9 +83,9 @@ ocp.subject_to(-50 <= (x<=50))
 ocp.subject_to(-50 <= (y<=50))
 ocp.subject_to(0.5 <= (z<=5))
 
-ocp.subject_to(-2 <= (ax<=2))
-ocp.subject_to(-2 <= (ay<=2))
-ocp.subject_to(-2 <= (az<=2))
+ocp.subject_to(0 <= (v<=2))
+ocp.subject_to(-1 <= (w_psi<=1))    # w_yaw
+ocp.subject_to(-2 <= (w_theta<=2))  # w_pitch
 
 ocp.subject_to(sumsqr(p-p0)>=((r0+r_uav)**2))  # per evitare l'ostacolo
 
@@ -104,10 +104,11 @@ ocp.add_objective(K_dist*ocp.integral(sumsqr(p[:2,:]-fitPts[:2,:]), grid='contro
 
 
 # Pick a solution method
+# options = {"max_iter": 5000}
 ocp.solver('ipopt')
 
 # Make it concrete for this ocp
-ocp.method(MultipleShooting(N=40,M=4,intg='rk'))  # N--> deve essere lo stesso numero con cui si è campionata la curva fittata
+ocp.method(MultipleShooting(N=N,M=4,intg='rk'))  # N--> deve essere lo stesso numero con cui si è campionata la curva fittata
 
 
 # Give concrete numerical value at parameters 
@@ -122,10 +123,13 @@ sol = ocp.solve()
 
 # PLOT
 fig = plt.figure()
-plot = fig.add_subplot(projection='3d')
+plot = fig.add_subplot(projection='3d',aspect='equal')
 plot.set_xlabel('X-Position (m)')
 plot.set_ylabel('Y-Position (m)')
 plot.set_zlabel('Z-Position (m)')
+
+plot.set_zlim(-2, 6)
+plot.set_zticks(range(-2, 7, 2))
 
 
 # Sample data from sol and variables x, y, z
@@ -166,7 +170,8 @@ plot.plot(wayPoint_fitting.fitted_points[0,:],wayPoint_fitting.fitted_points[1,:
 
 
 # Set axis to be equal
-plot.set_box_aspect([1,1,1]) 
+# plot.set_box_aspect([1,1,1]) 
+plot.set_box_aspect([ub - lb for lb, ub in (getattr(plot, f'get_{a}lim')() for a in 'xyz')])
 
 
 # Show the plot
