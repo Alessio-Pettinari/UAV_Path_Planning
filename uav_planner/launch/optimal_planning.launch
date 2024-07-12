@@ -1,0 +1,7 @@
+<launch>
+    <!-- Load OCP_Parameters from file YAML -->
+    <rosparam file="$(find uav_planner)/config/ocp_parameters.yaml" command="load"/>
+
+    <node name="uav_path_planning" pkg="uav_planner" type="ocp_planner.py" output="screen"/>
+
+</launch>

@@ -1,0 +1,32 @@
+####### OCP PARAMETERS ######
+
+# Exploration Limits:
+x_min: -50
+x_max: 50
+y_min: -50
+y_max: 50
+z_min: 0 #0.5
+z_max: 2 #5
+r_uav: 1 # UAV radius
+
+
+# Model Limits (constraints):
+theta_min: -0.5 # pitch angle constraint
+theta_max: 0.5
+v_min: 0
+v_max: 2
+w_psi_min: -1 # yaw angular velociy constraint
+w_psi_max: 1
+w_theta_min: -2 # pitch angular velociy constraint
+w_theta_max: 2
+
+
+# Optimal Problem:
+N: 40 # num sample optimization method
+
+# Cost Function:
+K_time: 1  # time weight
+K_dist: 1 # distance from other trajectory weight
+
+# Distance to consider the goal achieved (to calculate a new trajectory)
+dist_to_goal: 0.2 
