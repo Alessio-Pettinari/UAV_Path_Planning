@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 # waypoints_3d = [(-4, -3, -1), (-2, 3, 1), (2, 1, 1), (5, 0, 2), (7, 6, 2), (9, 7, 3)]
 # waypoints_3d = [(-4, -3, -1), (-2, 3, 1), (2, 3, 1), (5, 2, 1), (7, 2, 2), (9, 2, 2)]
-waypoints_3d = [(-4, -3, 0), (-2, 3, 0), (2, 1, 0), (5, 0, 0), (7, 6, 0), (9, 7, 0)]   # z=0
+# waypoints_3d = [(-4, -3, 0), (-2, 3, 0), (2, 1, 0), (5, 0, 0), (7, 6, 0), (9, 7, 0)]   # z=0
 degree = 3
 n_samples = rospy.get_param('/N', 40)  # take the same value of N in ocp_planner.py
 
@@ -18,7 +18,7 @@ n_samples = rospy.get_param('/N', 40)  # take the same value of N in ocp_planner
 fitted_points = None
 curve_fit = None
 
-def get_fitted_points():
+def get_fitted_points(waypoints_3d):
     global fitted_points, curve_fit
 
     ## Fitting Curve 

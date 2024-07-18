@@ -4,6 +4,7 @@ project(interpolation_method)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
+  nav_msgs
 )
 
 catkin_package()

@@ -1,7 +1,21 @@
 <launch>
+    
+    <!-- Launch Parameters -->
+    <arg name="namespace" default="drone"/>
+    <arg name="obstacle_info" default="obstacle_cluster_info"/>
+    <arg name="odometry_drone" default="/mavros/local_position/odom"/>
+    <arg name="wp_rosbot" default="/first/first_move_base/TrajectoryPlannerROS/global_plan"/>
+
+
     <!-- Load OCP_Parameters from file YAML -->
     <rosparam file="$(find uav_planner)/config/ocp_parameters.yaml" command="load"/>
 
-    <node name="uav_path_planning" pkg="uav_planner" type="ocp_planner.py" output="screen"/>
+    <group ns="$(arg namespace)">
+        <node name="uav_path_planning" pkg="uav_planner" type="ocp_planner.py" output="screen">
+            <remap from="obstacle_info" to="$(arg obstacle_info)"/>
+            <remap from="odometry_drone" to="$(arg odometry_drone)"/>
+            <remap from="wp_rosbot" to="$(arg wp_rosbot)"/>
+        </node>
+    </group>
 
 </launch>
