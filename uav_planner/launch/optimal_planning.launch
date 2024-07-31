@@ -5,6 +5,9 @@
     <arg name="obstacle_info" default="obstacle_cluster_info"/>
     <arg name="odometry_drone" default="/mavros/local_position/odom"/>
     <arg name="wp_rosbot" default="/first/first_move_base/TrajectoryPlannerROS/global_plan"/>
+    <arg name="frontier_goal" default="exploration/goal"/>
+    <arg name="free_space" default="eq_convexHull"/>
+
 
 
     <!-- Load OCP_Parameters from file YAML -->
@@ -15,6 +18,8 @@
             <remap from="obstacle_info" to="$(arg obstacle_info)"/>
             <remap from="odometry_drone" to="$(arg odometry_drone)"/>
             <remap from="wp_rosbot" to="$(arg wp_rosbot)"/>
+            <remap from="frontier_goal" to="$(arg frontier_goal)"/>
+            <remap from="free_space" to="$(arg free_space)"/>
         </node>
     </group>
 
