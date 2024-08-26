@@ -156,10 +156,13 @@ def robot_position_info(odom):
     robot_x = odom.pose.pose.position.x
     robot_y = odom.pose.pose.position.y
     robot_z = odom.pose.pose.position.z
+    robot_yaw = odom.twist.twist.angular.x
+    robot_pitch = odom.twist.twist.angular.y
     # robot_position = np.array([robot_x, robot_y, robot_z])
 
     # Odom2Map
     robot_point = Point(x=robot_x, y=robot_y, z=robot_z)
+    robot_orient_point = Point(yaw=robot_yaw, pitch=robot_pitch)
     robot_point_map = transform_point(robot_point, "odom", "map")  # Transform robot_position from "odom" to "map"
     if robot_point_map is not None:
         robot_mapFrame = np.array([robot_point_map.x, robot_point_map.y, robot_point_map.z])
@@ -285,48 +288,50 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
         
 
         ## Set_Initial
+        
+        if attempt == 0:
+            ocp.set_initial(x,(robot_position[0]+((goal_position[0]-robot_position[0])*(ocp.t/ocp.T))))
+            ocp.set_initial(y,(robot_position[1]+((goal_position[1]-robot_position[1])*(ocp.t/ocp.T)))) # Initial value of the solver equal to the current time
+            ocp.set_initial(z,(robot_position[2]+((goal_position[2]-robot_position[2])*(ocp.t/ocp.T))))
+        else:
+            perturbation = 0.1*attempt
+            # x_init = np.linspace(robot_position[0], goal_position[0], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            # y_init = np.linspace(robot_position[1], goal_position[1], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            # z_init = np.linspace(robot_position[2], goal_position[2], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            x_init = (robot_position[0]+((goal_position[0]-robot_position[0])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            y_init = (robot_position[1]+((goal_position[1]-robot_position[1])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            z_init = (robot_position[2]+((goal_position[2]-robot_position[2])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
+            ocp.set_initial(x, x_init)
+            ocp.set_initial(y, y_init)
+            ocp.set_initial(z, z_init)
+    # ocp.set_initial(x, ocp.t)
+    # ocp.set_initial(y, ocp.t) 
+    # ocp.set_initial(z, ocp.t)
+
+
+        ## Give concrete numerical value at parameters
+        if not no_UGV:
+            ocp.set_value(fitPts, fitted_points)
+        ocp.set_value(pos_obs, pos_obs_val.T)
+        ocp.set_value(r_obs, r_obs_val)
+
         try:
-            if attempt == 0:
-                ocp.set_initial(x,(robot_position[0]+((goal_position[0]-robot_position[0])*(ocp.t/ocp.T))))
-                ocp.set_initial(y,(robot_position[1]+((goal_position[1]-robot_position[1])*(ocp.t/ocp.T)))) # Initial value of the solver equal to the current time
-                ocp.set_initial(z,(robot_position[2]+((goal_position[2]-robot_position[2])*(ocp.t/ocp.T))))
-            else:
-                perturbation = 0.1*attempt
-                # x_init = np.linspace(robot_position[0], goal_position[0], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                # y_init = np.linspace(robot_position[1], goal_position[1], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                # z_init = np.linspace(robot_position[2], goal_position[2], N + 1) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                x_init = (robot_position[0]+((goal_position[0]-robot_position[0])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                y_init = (robot_position[1]+((goal_position[1]-robot_position[1])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                z_init = (robot_position[2]+((goal_position[2]-robot_position[2])*(ocp.t/ocp.T))) + np.random.uniform(-perturbation, perturbation, size=N + 1)
-                ocp.set_initial(x, x_init)
-                ocp.set_initial(y, y_init)
-                ocp.set_initial(z, z_init)
-        # ocp.set_initial(x, ocp.t)
-        # ocp.set_initial(y, ocp.t) 
-        # ocp.set_initial(z, ocp.t)
-
-
-            ## Give concrete numerical value at parameters
-            if not no_UGV:
-                ocp.set_value(fitPts, fitted_points)
-            ocp.set_value(pos_obs, pos_obs_val.T)
-            ocp.set_value(r_obs, r_obs_val)
-
             ## Solve
             sol = ocp.solve()
+            correct = True
+        except Exception as e:
+            rospy.logwarn(f"Solver failed on attempt {attempt + 1}")
+            correct = False
+            continue   
 
             # Check if solver found a solution
-            if sol.stats["return_status"] == "Solve_Succeeded":
-                initial_success = True
-                rospy.loginfo(f"Solver found a solution on attempt {attempt + 1}")
+        if correct and sol.stats["return_status"] == "Solve_Succeeded":
+            initial_success = True
+            rospy.loginfo(f"Solver found a solution on attempt {attempt + 1}")
+        else:
+            attempt += 1
 
-        except Exception as e:
-            rospy.logwarn(f"Solver failed on attempt {attempt + 1} with error: {e}")    
-            
-        attempt += 1
-
-
-    t3 = rospy.Time.now()
+        t3 = rospy.Time.now()
 
     diff1 = t1-t0
     diff2 = t3-t2
