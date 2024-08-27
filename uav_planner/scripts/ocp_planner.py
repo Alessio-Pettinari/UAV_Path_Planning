@@ -10,9 +10,13 @@ import numpy as np
 from numpy import pi, cos, sin, tan
 from casadi import * 
 from uav_frontier_exploration_3d.msg import ClusterInfo, FreeMeshInfo
-from geometry_msgs.msg import Point, PoseStamped
+from geometry_msgs.msg import Point, PoseStamped, PoseArray
 from nav_msgs.msg import Path, Odometry
 from core.msg import PosVel
+import time
+import casadi as cs
+from scipy.spatial import KDTree
+
 
 from uav_path_planning.interpolation_method.scripts.wayPoint_fitting import get_fitted_points
 # export PYTHONPATH=/home/sara/alessio/rosbot_ws/src:$PYTHONPATH
@@ -24,6 +28,10 @@ from uav_path_planning.interpolation_method.scripts.wayPoint_fitting import get_
 pos_obs_val = np.zeros((1, 3))
 r_obs_val = np.zeros(1)
 robot_position = np.array([np.nan] * 3)
+robot_orientation = np.array([np.nan]*2)
+kdtree_obs = None
+kdtree_free = None
+freeVoxel_points = np.array([np.nan] * 3)
 
 goal_reached = True  
 new_goal_compute = True
@@ -51,7 +59,46 @@ def transform_point(point, from_frame, to_frame):
     except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
         rospy.logerr(f"Transformation failed!: {e}")
         return None
+    
+## Obstacle Map
+# def generate_obstacle_lookup():
+#     global kdtree_obs, freeVoxel_points
+#     x_grid = np.linspace(-1.5, 8.5, 41)
+#     y_grid = np.linspace(-8.5, 11.5, 41)
+#     z_grid = np.linspace(z_min, z_max, 41)
+#     X, Y, Z = np.meshgrid(x_grid, y_grid, z_grid)
 
+#     data_flat = []
+#     for i in range(41):
+#         for j in range(41):
+#             for k in range(41):
+#                 # d_free, idx_free = kdtree_free.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+#                 d_obs, idx_obs = kdtree_obs.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+#                 # if d_free>0.1:
+#                 #     d_obs=0.1
+#                 data_flat.append(d_obs)
+#     # rospy.loginfo(f"AAAA: {data_flat}")
+
+#     return data_flat, cs.interpolant('pot_field', 'linear', [x_grid, y_grid, z_grid], np.array(data_flat))
+
+## Obstacle Map
+def generate_obstacle_lookup():
+    global kdtree_obs
+    data_flat = []
+    x_list = np.linspace(0, 10, 41)
+    y_list = np.linspace(0, 20, 41)
+    z_list = np.linspace(z_min, z_max, 41)
+    for y in y_list:
+        for x in x_list:
+            for z in z_list:
+                # d_free, idx_free = kdtree_free.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+                d_obs, idx_obs = kdtree_obs.query([x, y, z], k=1)
+                # if d_free>0.1:
+                #     d_obs=0.1
+                data_flat.append(d_obs)
+    # rospy.loginfo(f"AAAA: {data_flat}")
+
+    return data_flat, cs.interpolant('pot_field', 'linear', [x_list, y_list, z_list], np.array(data_flat))
 
 
 ## Callback waypoints from Rosbot Path
@@ -84,85 +131,90 @@ def goal_callback(data):
 
 
 ## Callback function obstacle info
-def obstacle_info(info):
-    global pos_obs_val, r_obs_val
-    pos_obs_val = np.array([[p.x, p.y, p.z] for p in info.clst_centers])
-    r_obs_val = np.array(info.clst_radius)
+# def obstacle_info(info):
+#     global pos_obs_val, r_obs_val
+#     pos_obs_val = np.array([[p.x, p.y, p.z] for p in info.clst_centers])
+#     r_obs_val = np.array(info.clst_radius)
 
-    # Odom2Map
-    obst_mapFrame = []
-    for pos in pos_obs_val:
-        obst_point = Point(x=pos[0], y=pos[1], z=pos[2])
-        obst_point_map = transform_point(obst_point, "odom", "map") # Transform obstacles from "odom" to "map"
-        if obst_point_map is not None:
-            obst_mapFrame.append([obst_point_map.x, obst_point_map.y, obst_point_map.z])
+#     # Odom2Map
+#     obst_mapFrame = []
+#     for pos in pos_obs_val:
+#         obst_point = Point(x=pos[0], y=pos[1], z=pos[2])
+#         obst_point_map = transform_point(obst_point, "odom", "map") # Transform obstacles from "odom" to "map"
+#         if obst_point_map is not None:
+#             obst_mapFrame.append([obst_point_map.x, obst_point_map.y, obst_point_map.z])
+#         else:
+#             rospy.logwarn("Failed to transform obstacle_point in map frame!")
+    
+#     pos_obs_val = np.array(obst_mapFrame)
+#     # rospy.loginfo("Obstacle Position obtained!")
+
+
+## Callback function obstacle voxel from Octomap
+def obstacle_voxel(pose_array):
+    global kdtree_obs
+    points = []
+    for pose in pose_array.poses:
+        points.append([pose.position.x, pose.position.y, pose.position.z]) 
+    points = np.array(points)
+
+    if len(points) == 0:
+        rospy.loginfo("Cluster points array empty!")
+
+    obsVoxel_mapFrame = []
+    for pos in points:
+        obsVoxel_point = Point(x=pos[0], y=pos[1], z=pos[2])
+        obsVoxel_point_map = transform_point(obsVoxel_point, "odom", "map") # Transform obstacles from "odom" to "map"
+        if obsVoxel_point_map is not None:
+            obsVoxel_mapFrame.append([obsVoxel_point_map.x, obsVoxel_point_map.y, obsVoxel_point_map.z])
         else:
             rospy.logwarn("Failed to transform obstacle_point in map frame!")
     
-    pos_obs_val = np.array(obst_mapFrame)
-    # rospy.loginfo("Obstacle Position obtained!")
+    points = np.array(obsVoxel_mapFrame)
+
+    kdtree_obs = KDTree(points)
 
 
-## Callback function free space
-def freeSpace_callback(free):
-    global coeff_matrix, const_matrix
+def freeVoxel_Callback(data):
+    global freeVoxel_points, kdtree_free
+    freeVoxel_points = []
 
-    coeff_msg = np.array(free.coeff)
-    const_msg = np.array(free.const)
+    for pose in data.poses:
+        freeVoxel_points.append([pose.position.x, pose.position.y, pose.position.z])
+    
+    # Converto in un array numPy
+    freeVoxel_points = np.array(freeVoxel_points)
+    if len(freeVoxel_points) == 0:
+        rospy.loginfo("FreeVoxel points array empty!")
 
-    # Num hyperplane
-    num_planes = len(const_msg)
-    num_coeff_per_plane = len(coeff_msg) // num_planes
-
-    coeff_matrix = coeff_msg.reshape((num_planes, num_coeff_per_plane)) # [nx3]
-    const_matrix = const_msg
-
-    # Odom2Map
-    coeff_matrix_map = np.zeros_like(coeff_matrix)
-    for i, coeff in enumerate(coeff_matrix):
-        coeff_point = Point(x=coeff[0], y=coeff[1], z=coeff[2])
-        coeff_point_map = transform_point(coeff_point, "odom", "map")
-        if coeff_point_map is not None:
-            coeff_matrix_map[i] = [coeff_point_map.x, coeff_point_map.y, coeff_point_map.z]
+    freeVoxel_mapFrame = []
+    for freepos in freeVoxel_points:
+        freeVoxel_point = Point(x=freepos[0], y=freepos[1], z=freepos[2])
+        freeVoxel_point_map = transform_point(freeVoxel_point, "odom", "map") # Transform obstacles from "odom" to "map"
+        if freeVoxel_point_map is not None:
+            freeVoxel_mapFrame.append([freeVoxel_point_map.x, freeVoxel_point_map.y, freeVoxel_point_map.z])
         else:
-            rospy.logwarn("Failed to transform coeff_freeEquation in map frame!")
-    coeff_matrix = coeff_matrix_map
+            rospy.logwarn("Failed to transform obstacle_point in map frame!")
+    
+    freeVoxel_points = np.array(freeVoxel_mapFrame)
+    # kdtree_free = KDTree(freeVoxel_points)
 
 
-    # const_matrix_map = []
-    # for const in const_matrix:
-    #     const_point = Point(x=const, y=0, z=0)
-    #     const_point_map = transform_point(const_point, "odom", "map")
-    #     if const_point_map is not None:
-    #         const_matrix_map.append(const_point_map)
-    #     else:
-    #         rospy.logwarn("Failed to transform coeff_freeEquation in map frame!")
-    # const_matrix = const_matrix_map
-    const_matrix_map = np.zeros(len(const_matrix))
-    for i, const in enumerate(const_matrix):
-        const_point = Point(x=const, y=0, z=0)
-        const_point_map = transform_point(const_point, "odom", "map")
-        if const_point_map is not None:
-            const_matrix_map[i] = const_point_map.x
-        else:
-            rospy.logwarn("Failed to transform coeff_freeEquation in map frame!")
-    const_matrix = const_matrix_map
-  
-  
 
 ## Callback function robot position info
 def robot_position_info(odom):
-    global robot_position, position_ready
+    global robot_position, position_ready, robot_orientation
     robot_x = odom.pose.pose.position.x
     robot_y = odom.pose.pose.position.y
     robot_z = odom.pose.pose.position.z
     robot_yaw = odom.twist.twist.angular.x
     robot_pitch = odom.twist.twist.angular.y
+    robot_orientation = np.array([robot_yaw, robot_pitch])
     # robot_position = np.array([robot_x, robot_y, robot_z])
 
     # Odom2Map
     robot_point = Point(x=robot_x, y=robot_y, z=robot_z)
-    robot_orient_point = Point(yaw=robot_yaw, pitch=robot_pitch)
+    # robot_orient_point = Point(yaw=robot_yaw, pitch=robot_pitch)
     robot_point_map = transform_point(robot_point, "odom", "map")  # Transform robot_position from "odom" to "map"
     if robot_point_map is not None:
         robot_mapFrame = np.array([robot_point_map.x, robot_point_map.y, robot_point_map.z])
@@ -171,7 +223,7 @@ def robot_position_info(odom):
     robot_position = robot_mapFrame
 
     # rospy.loginfo(f"Updated robot position: {robot_position}")
-    if not np.all(np.isnan(robot_position)):
+    if not np.all(np.isnan(robot_position)) & np.all(np.isnan(robot_orientation)):
         position_ready = True
         # rospy.loginfo("Position obtained!")
 
@@ -179,12 +231,12 @@ def robot_position_info(odom):
  
 
 ## OCP Planner    
-def uav_planner(robot_position, goal_position, fitted_points='none'):
+def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='none'):
     global first_goal, pos_obs_val, r_obs_val, coeff_matrix, const_matrix
 
     rospy.loginfo(f"goal: {goal_position}")
     rospy.loginfo(f"robot: {robot_position}")
-    t0 = rospy.Time.now()
+    t0 = time.time()
 
     initial_success = False
     max_attempts = 5
@@ -214,17 +266,19 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
 
         ## Problem Parameters:
         p = vertcat(x,y,z)                             # robot position
-        pos_obs = ocp.parameter(3,len(r_obs_val))      # obstacles position
-        r_obs = ocp.parameter(1,len(r_obs_val))        # radius obstacles
+        # pos_obs = ocp.parameter(3,len(r_obs_val))      # obstacles position
+        # r_obs = ocp.parameter(1,len(r_obs_val))        # radius obstacles
         if not no_UGV:
             fitPts = ocp.parameter(3, grid='control')  # fitted points
 
-
+        
         ## Hard Constraints:
         # Initial constraints
         ocp.subject_to(ocp.at_t0(x)== robot_position[0]) 
         ocp.subject_to(ocp.at_t0(y)== robot_position[1]) 
         ocp.subject_to(ocp.at_t0(z)== robot_position[2])
+        ocp.subject_to(ocp.at_t0(psi)== robot_orientation[0])
+        ocp.subject_to(ocp.at_t0(theta)== robot_orientation[1])
         # Final constraint
         ocp.subject_to(ocp.at_tf(x)== goal_position[0]) 
         ocp.subject_to(ocp.at_tf(y)== goal_position[1]) 
@@ -240,15 +294,36 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
         ocp.subject_to(w_psi_min <= (w_psi <= w_psi_max))        # w_yaw
         ocp.subject_to(w_theta_min <= (w_theta <= w_theta_max))  # w_pitch
         # Obstacle Avoidance
-        for idx_obj in range(len(r_obs_val)):
-            ocp.subject_to(sumsqr(p-pos_obs[:,idx_obj])>=((r_obs[:,idx_obj]+r_uav)**2))  
+        # for idx_obj in range(len(r_obs_val)):
+        #     ocp.subject_to(sumsqr(p-pos_obs[:,idx_obj])>=((r_obs[:,idx_obj]+r_uav)**2))  
+        data_flat, obstacle_lookup = generate_obstacle_lookup()
+        ocp.subject_to(obstacle_lookup(cs.vertcat(x, y, z)) >= r_uav)
+
+        rospy.loginfo(f"Min value in data_flat {np.min(data_flat)}")
+        data = np.array(data_flat).reshape((41,41,41))
+
+        # import matplotlib.pyplot as plt
+        # from matplotlib.colors import Normalize
+        # x_grid = np.linspace(0, 10, 41)
+        # y_grid = np.linspace(0, 20, 41)
+        # z_grid = np.linspace(z_min, z_max, 41)
+        # z_index=20
+        # data_slice = data[:, :, z_index]
+        # # plt.contourf(x_grid, y_grid, data_slice, cmap='gray')
+        # plt.imshow(data_slice, extent=(x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
+        # plt.colorbar(label='Distance')
+        # plt.title(f'Grayscale Map with Contours (Slice at Z-index {z_index})')
+        # plt.xlabel('X Coordinate')
+        # plt.ylabel('Y Coordinate')
+        # plt.axis("equal")
+        # plt.show()
+        # return
+
+        # with open('/home/sara/Downloads/data.npy', 'wb') as f:
+        #     np.save(f, data_flat)
+        # return
+
         
-        # constraint_free = []
-        # Solution inside Free_Space Octomap:
-        # for idx_plane in range(coeff_matrix.shape[0]):
-        #     hyperplane_funct = mtimes(coeff_matrix[idx_plane,:].reshape(1, -1), p) + const_matrix[idx_plane] # Hyperplane function [ a*x + b <= 0]
-        #     # constraint_free.append(hyperplane_funct <= 0)     
-        #     ocp.subject_to(hyperplane_funct <= 0)
 
 
         ## Soft Consraints: Objective Function:
@@ -260,31 +335,34 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
 
 
         ## Pick a solution method
-        ocp.solver(
-                "ipopt",
-                {
-                    "expand": True,
-                    "verbose": False,
-                    "print_time": True,
-                    # "print_in": False,
-                    # "print_out": False,
-                    "error_on_fail": False,
-                    "ipopt": {
-                        #"linear_solver": "ma27",
-                        "max_iter": 5000,
-                        "sb": "yes",  # Suppress IPOPT banner
-                        "tol": 1e-2,
-                        "print_level": 5,
-                        "hessian_approximation": "limited-memory"
-                    },
-                },
-            )
+        # ocp.solver(
+        #         "ipopt",
+        #         {
+        #             "expand": True,
+        #             "verbose": False,
+        #             "print_time": True,
+        #             # "print_in": False,
+        #             # "print_out": False,
+        #             "error_on_fail": False,
+        #             "ipopt": {
+        #                 #"linear_solver": "ma27",
+        #                 "max_iter": 5000,
+        #                 "sb": "yes",  # Suppress IPOPT banner
+        #                 "tol": 1e-2,
+        #                 "print_level": 5,
+        #                 "hessian_approximation": "limited-memory"
+        #             },
+        #         },
+        #     )
+        
+        ocp.solver("ipopt")
+
         ## Make it concrete for this ocp
         ocp.method(MultipleShooting(N=N,M=4,intg='rk'))  
 
-        t1 = rospy.Time.now()
+        t1 = time.time()
 
-        t2 = rospy.Time.now()
+        t2 = time.time()
         
 
         ## Set_Initial
@@ -312,15 +390,15 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
         ## Give concrete numerical value at parameters
         if not no_UGV:
             ocp.set_value(fitPts, fitted_points)
-        ocp.set_value(pos_obs, pos_obs_val.T)
-        ocp.set_value(r_obs, r_obs_val)
+        # ocp.set_value(pos_obs, pos_obs_val.T)
+        # ocp.set_value(r_obs, r_obs_val)
 
         try:
             ## Solve
             sol = ocp.solve()
             correct = True
         except Exception as e:
-            rospy.logwarn(f"Solver failed on attempt {attempt + 1}")
+            rospy.logwarn(f"Solver failed on attempt {attempt + 1} with error {e}")
             correct = False
             continue   
 
@@ -331,17 +409,18 @@ def uav_planner(robot_position, goal_position, fitted_points='none'):
         else:
             attempt += 1
 
-        t3 = rospy.Time.now()
+        t3 = time.time()
 
     diff1 = t1-t0
     diff2 = t3-t2
     rospy.loginfo(f"diff1: {diff1}")
     rospy.loginfo(f"diff2: {diff2}")
-    rospy.loginfo("Tempo di esecuzione: %f secondi" % diff1.to_sec())
-    rospy.loginfo("Tempo di esecuzione: %f secondi" % diff2.to_sec())
+    rospy.loginfo("Tempo di esecuzione: %f secondi" % diff1)
+    rospy.loginfo("Tempo di esecuzione: %f secondi" % diff2)
+    rospy.loginfo(f"Orien: {robot_orientation}")
 
     first_goal = False
-
+    
     return sol, x, y, z, psi, w_psi
 
 
@@ -391,9 +470,6 @@ def follow_path(sol, x, y, z, psi, w_psi):
     vzs = np.diff(zs) / np.diff(ts)
 
     control_threshold = 0.5
-    # rospy.loginfo(f"d_xs: {xs}")
-    # rospy.loginfo(f"d_vxs: {len(vxs)}")
-    # rospy.loginfo(f"d_ws: {len(w_psi_val)}")
 
     init_control = True  
     i=1
@@ -487,10 +563,15 @@ if __name__ == "__main__":
     tf_buffer = tf2_ros.Buffer() # Initializing TF2  listener
     tf_listener = tf2_ros.TransformListener(tf_buffer)
 
-    
-    obs_info = rospy.Subscriber('obstacle_info', ClusterInfo, obstacle_info)
+    ## obstacle sphere clustering
+    # obs_info = rospy.Subscriber('obstacle_info', ClusterInfo, obstacle_info)
+    obs_voxel = rospy.Subscriber('obstacle_voxel', PoseArray, obstacle_voxel)
+
+    free_voxel = rospy.Subscriber('free_voxel', PoseArray, freeVoxel_Callback)
+
+
     position_robot = rospy.Subscriber('odometry_drone', Odometry, robot_position_info)
-    free_space = rospy.Subscriber('free_space', FreeMeshInfo, freeSpace_callback)
+    # free_space = rospy.Subscriber('free_space', FreeMeshInfo, freeSpace_callback)
     if not no_UGV:
         wp_sub = rospy.Subscriber('wp_rosbot', Path, waypoints_callback)
     goal_sub = rospy.Subscriber('frontier_goal', PoseStamped, goal_callback)
@@ -535,9 +616,9 @@ if __name__ == "__main__":
                 rospy.loginfo("OCP planner starting")
                 if not no_UGV:
                     fitted_points = get_fitted_points(waypoints_3d)
-                    sol, x, y, z, psi, w_psi = uav_planner(robot_position, goal_position, fitted_points)
+                    sol, x, y, z, psi, w_psi = uav_planner(robot_position, robot_orientation, goal_position, fitted_points)
                 else:
-                    sol, x, y, z, psi, w_psi = uav_planner(robot_position, goal_position)
+                    sol, x, y, z, psi, w_psi = uav_planner(robot_position,robot_orientation, goal_position)
                 rospy.loginfo("Follow OCP Path!")
                 publish_ocp_path(sol, x, y, z)
                 follow_path(sol, x, y, z, psi, w_psi)
