@@ -59,46 +59,127 @@ def transform_point(point, from_frame, to_frame):
     except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
         rospy.logerr(f"Transformation failed!: {e}")
         return None
+
+
+## Obstacle Map
+def generate_obstacle_lookup():
+    global kdtree_obs, freeVoxel_points, val_lim
+    x_grid = np.linspace(x_min, x_max, N+1)
+    y_grid = np.linspace(y_min, y_max, N+1)
+    z_grid = np.linspace(z_min, z_max, N+1)
+    X, Y, Z = np.meshgrid(x_grid, y_grid, z_grid, indexing="ij")
+
+    data_flat = []
+    idx = []
+    for k in range(N+1):
+        for j in range(N+1):
+            for i in range(N+1):
+                # d_free, idx_free = kdtree_free.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+                d_obs, idx_obs = kdtree_obs.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+                data_flat.append(d_obs)
+                idx.append((i,j,k))
+    data_flat = np.array(data_flat)
+    data = data_flat.reshape((N+1, N+1, N+1))
+    min_d = np.min(data_flat)
+    alpha = 1
+    eps = 1e-10
+    data_flat = alpha / (data_flat - min_d + eps)
+    ##
+    # d_obs_target = 0.8
+    # indices_closest = np.abs(data_flat - d_obs_target).argmin()
+    # d_obs_value = data_flat[indices_closest]
+    # val_lim = alpha / (d_obs_value - min_d + eps)
+    # rospy.loginfo(f"Potential for d_obs = {d_obs_target} is {val_lim}") 
+
+    ##
+    # # rospy.loginfo(f"U: {data_flat}")
+    # min_index = np.argmin(data_flat)
+    # min_i, min_j, min_k = idx[min_index]  
+    # min_x = x_grid[min_i]
+    # min_y = y_grid[min_j]
+    # min_z = z_grid[min_k]
+    # rospy.loginfo(f"Min_U: {np.min(data_flat)}")
+    # rospy.loginfo(f"Coordinates of Min_U: X={min_x}, Y={min_y}, Z={min_z}")
+    # max_index = np.argmax(data_flat)
+    # max_i, max_j, max_k = idx[max_index]     
+    # max_x = x_grid[max_i]
+    # max_y = y_grid[max_j]
+    # max_z = z_grid[max_k]
+    # rospy.loginfo(f"Max_U: {np.max(data_flat)}")
+    # rospy.loginfo(f"Coordinates of Max_U: X={max_x}, Y={max_y}, Z={max_z}")
     
+    # point = [max_x, max_y, max_z]
+    # # point = [min_x, min_y, min_z]
+
+    # interpolant = cs.interpolant('pot_field', 'linear', [x_grid, y_grid, z_grid], data_flat)
+    # potential = interpolant(cs.vertcat(*point)).full().flatten()[0]
+    # rospy.loginfo(f'Point: {point}, Potential: {potential}')
+
+    
+    # from scipy.interpolate import RegularGridInterpolator
+    # interp_func = RegularGridInterpolator((x_grid, y_grid, z_grid), data, method='linear')
+    # pot = interp_func(np.array(point))
+    # rospy.loginfo(f'Point: {point}, Potential2: {pot}')
+
+
+    ##PLOT
+    #Flatten the meshgrid arrays
+    # X_flat = X.flatten()
+    # Y_flat = Y.flatten()
+    # Z_flat = Z.flatten()
+    # # 3D slices of contour plots
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    num_slices = min(len(z_grid) // 10, len(ax))  # Ensure we do not exceed the number of subplots
+    for i in range(num_slices):
+        data_slice = data_flat.reshape(41, 41, 41, order='F')[:, :, i*10]
+        ax[i].contourf(X[:, :, i*10], Y[:, :, i*10], data_slice, cmap='viridis')
+        ax[i].set_title('z = {}'.format(z_grid[i*10]))
+        ax[i].axis('equal')
+        ax[i].grid(True)
+    # Add a colorbar
+    fig.colorbar(ax[0].contourf(X[:, :, 0], Y[:, :, 0], data_slice, cmap='viridis'), ax=ax, orientation='horizontal')
+    fig.suptitle('Potential Map at Different Z-slices', fontsize=16, fontweight='bold')
+    plt.show()
+    return
+
+    
+    ## Plot Potential Field
+    # import matplotlib.pyplot as plt
+    # from matplotlib.colors import Normalize
+    # data = np.array(data_flat).reshape((N+1,N+1,N+1))
+    # z_index=20
+    # data_slice = data[:, :, z_index]
+    # plt.figure(figsize=(8, 6))
+    # #plt.contourf(x_grid, y_grid, data_slice, cmap='viridis', norm=Normalize(vmin=data.min(), vmax=data.max()))
+    # plt.imshow(data_slice, extent=(x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
+    # plt.colorbar(label='Potential')
+    # plt.title(f'Potential Map Slice at Z-index {z_index}')
+    # plt.xlabel('X Coordinate')
+    # plt.ylabel('Y Coordinate')
+    # plt.axis('equal')
+    # plt.show()
+    # return
+
+    return data_flat, cs.interpolant('pot_field', 'linear', [x_grid, y_grid, z_grid], data_flat)
+
 ## Obstacle Map
 # def generate_obstacle_lookup():
-#     global kdtree_obs, freeVoxel_points
-#     x_grid = np.linspace(-1.5, 8.5, 41)
-#     y_grid = np.linspace(-8.5, 11.5, 41)
-#     z_grid = np.linspace(z_min, z_max, 41)
-#     X, Y, Z = np.meshgrid(x_grid, y_grid, z_grid)
-
+#     global kdtree_obs
 #     data_flat = []
-#     for i in range(41):
-#         for j in range(41):
-#             for k in range(41):
+#     x_list = np.linspace(0, 10, 41)
+#     y_list = np.linspace(0, 20, 41)
+#     z_list = np.linspace(z_min, z_max, 41)
+#     for y in y_list:
+#         for x in x_list:
+#             for z in z_list:
 #                 # d_free, idx_free = kdtree_free.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
-#                 d_obs, idx_obs = kdtree_obs.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
+#                 d_obs, idx_obs = kdtree_obs.query([x, y, z], k=1)
 #                 # if d_free>0.1:
 #                 #     d_obs=0.1
 #                 data_flat.append(d_obs)
 #     # rospy.loginfo(f"AAAA: {data_flat}")
 
-#     return data_flat, cs.interpolant('pot_field', 'linear', [x_grid, y_grid, z_grid], np.array(data_flat))
-
-## Obstacle Map
-def generate_obstacle_lookup():
-    global kdtree_obs
-    data_flat = []
-    x_list = np.linspace(0, 10, 41)
-    y_list = np.linspace(0, 20, 41)
-    z_list = np.linspace(z_min, z_max, 41)
-    for y in y_list:
-        for x in x_list:
-            for z in z_list:
-                # d_free, idx_free = kdtree_free.query([X[i,j,k], Y[i,j,k], Z[i,j,k]], k=1)
-                d_obs, idx_obs = kdtree_obs.query([x, y, z], k=1)
-                # if d_free>0.1:
-                #     d_obs=0.1
-                data_flat.append(d_obs)
-    # rospy.loginfo(f"AAAA: {data_flat}")
-
-    return data_flat, cs.interpolant('pot_field', 'linear', [x_list, y_list, z_list], np.array(data_flat))
+#     return data_flat, cs.interpolant('pot_field', 'linear', [x_list, y_list, z_list], np.array(data_flat))
 
 
 ## Callback waypoints from Rosbot Path
@@ -176,7 +257,7 @@ def obstacle_voxel(pose_array):
 
 
 def freeVoxel_Callback(data):
-    global freeVoxel_points, kdtree_free
+    global freeVoxel_points
     freeVoxel_points = []
 
     for pose in data.poses:
@@ -232,7 +313,7 @@ def robot_position_info(odom):
 
 ## OCP Planner    
 def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='none'):
-    global first_goal, pos_obs_val, r_obs_val, coeff_matrix, const_matrix
+    global first_goal, pos_obs_val, r_obs_val, coeff_matrix, const_matrix, val_lim
 
     rospy.loginfo(f"goal: {goal_position}")
     rospy.loginfo(f"robot: {robot_position}")
@@ -295,13 +376,20 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
         ocp.subject_to(w_theta_min <= (w_theta <= w_theta_max))  # w_pitch
         # Obstacle Avoidance
         # for idx_obj in range(len(r_obs_val)):
-        #     ocp.subject_to(sumsqr(p-pos_obs[:,idx_obj])>=((r_obs[:,idx_obj]+r_uav)**2))  
+        #     ocp.subject_to(sumsqr(p-pos_obs[:,idx_obj])>=((r_obs[:,idx_obj]+r_uav)**2)) 
+        #  
         data_flat, obstacle_lookup = generate_obstacle_lookup()
-        ocp.subject_to(obstacle_lookup(cs.vertcat(x, y, z)) >= r_uav)
 
-        rospy.loginfo(f"Min value in data_flat {np.min(data_flat)}")
-        data = np.array(data_flat).reshape((41,41,41))
+        # test_points = np.array([[3, 11, 1.4], [4, 6, 0.65], [2.5, 2.5, 1.4]])  
+        # # Stampa il valore di potenziale per ciascun punto di test
+        # for point in test_points:
+        #     potential = obstacle_lookup(cs.vertcat(*point)).full().flatten()[0]
+        #     rospy.loginfo(f'Point: {point}, Potential: {potential}')
+        # return
 
+        # ocp.subject_to(obstacle_lookup(cs.vertcat(x, y, z)) >= r_uav)
+        # ocp.subject_to(obstacle_lookup(cs.vertcat(x, y, z)) <= val_lim)
+    
         # import matplotlib.pyplot as plt
         # from matplotlib.colors import Normalize
         # x_grid = np.linspace(0, 10, 41)
@@ -309,8 +397,8 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
         # z_grid = np.linspace(z_min, z_max, 41)
         # z_index=20
         # data_slice = data[:, :, z_index]
-        # # plt.contourf(x_grid, y_grid, data_slice, cmap='gray')
-        # plt.imshow(data_slice, extent=(x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
+        # plt.contourf(x_grid, y_grid, data_slice, cmap='gray')
+        # # plt.imshow(data_slice, extent=(x_grid[0], x_grid[-1], y_grid[0], y_grid[-1]))
         # plt.colorbar(label='Distance')
         # plt.title(f'Grayscale Map with Contours (Slice at Z-index {z_index})')
         # plt.xlabel('X Coordinate')
@@ -331,7 +419,9 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
         ocp.add_objective(K_time*ocp.T) 
         # Minimal distance to the other curve fitted: 
         if not no_UGV:
-            ocp.add_objective(K_dist*ocp.integral(sumsqr(p[:2,:]-fitPts[:2,:])/ocp.T, grid='control'))  
+            ocp.add_objective(K_dist*ocp.integral(sumsqr(p[:2,:]-fitPts[:2,:])/ocp.T, grid='control'))
+        # Obstacle Avoidance
+        ocp.add_objective(K_obs*ocp.integral(obstacle_lookup(p)))  
 
 
         ## Pick a solution method
@@ -355,7 +445,23 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
         #         },
         #     )
         
-        ocp.solver("ipopt")
+        ocp.solver(
+                "ipopt",
+                {
+                    # "expand": True,
+                    "verbose": False,
+                    "print_time": True,
+                    "error_on_fail": False,
+                    "ipopt": {
+                        #"linear_solver": "ma27",
+                        "max_iter": 5000,
+                        "sb": "yes",  # Suppress IPOPT banner
+                        "tol": 1e-2,
+                        "print_level": 5,
+                        "hessian_approximation": "limited-memory"
+                    },
+                },
+            )
 
         ## Make it concrete for this ocp
         ocp.method(MultipleShooting(N=N,M=4,intg='rk'))  
@@ -402,8 +508,11 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
             correct = False
             continue   
 
-            # Check if solver found a solution
-        if correct and sol.stats["return_status"] == "Solve_Succeeded":
+        rospy.loginfo(f"Solver status {sol.stats['return_status']}")
+
+        # Check if solver found a solution
+        # if correct and sol.stats["return_status"] == "Solve_Succeeded":
+        if correct and sol.stats["return_status"] in ["Solve_Succeeded","Solved To Acceptable Level"]:
             initial_success = True
             rospy.loginfo(f"Solver found a solution on attempt {attempt + 1}")
         else:
@@ -413,15 +522,14 @@ def uav_planner(robot_position,robot_orientation, goal_position, fitted_points='
 
     diff1 = t1-t0
     diff2 = t3-t2
-    rospy.loginfo(f"diff1: {diff1}")
-    rospy.loginfo(f"diff2: {diff2}")
     rospy.loginfo("Tempo di esecuzione: %f secondi" % diff1)
     rospy.loginfo("Tempo di esecuzione: %f secondi" % diff2)
-    rospy.loginfo(f"Orien: {robot_orientation}")
 
     first_goal = False
+
     
     return sol, x, y, z, psi, w_psi
+
 
 
 ##Publisher Path (Rviz)
@@ -449,6 +557,47 @@ def publish_ocp_path(sol, x, y, z):
     if len(ts) > 0:
         path_ocp_pub.publish(path_msg)
         rospy.loginfo("Path Published!")
+
+
+    ## Plot traj point with potential
+    # import matplotlib.pyplot as plt
+    # from mpl_toolkits.mplot3d import Axes3D
+    # ts, xs = sol.sample(x, grid='control')
+    # ts, ys = sol.sample(y, grid='control')
+    # ts, zs = sol.sample(z, grid='control')
+    # trajectory_potentials = calculate_potential_for_trajectory_points(xs, ys, zs)
+    # fig = plt.figure(figsize=(12, 8))
+    # ax = fig.add_subplot(111, projection='3d')
+    # sc = ax.scatter(xs, ys, zs, c=trajectory_potentials, cmap='viridis', marker='o', s=50)
+    # plt.colorbar(sc, label='Potential')
+
+    # ax.set_xlabel('X Coordinate')
+    # ax.set_ylabel('Y Coordinate')
+    # ax.set_zlabel('Z Coordinate')
+    # ax.set_title('Trajectory Points with Associated Potential Values')
+
+    # plt.show()
+    ##########
+    # data_flat, obstacle_lookup = generate_obstacle_lookup()
+    # potentials = []
+    # for i in range(len(xs)):
+    #     point = np.array([xs[i], ys[i], zs[i]])
+    #     potential = obstacle_lookup(point)
+    #     potentials.append(potential)
+    # potentials = np.array(potentials)
+    # fig = plt.figure(figsize=(10, 8))
+    # ax = fig.add_subplot(111, projection='3d')
+    # sc = ax.scatter(xs, ys, zs, c=potentials, cmap='viridis')
+    # ax.plot(xs, ys, zs, 'k--', alpha=0.5)
+    # ax.set_xlabel('X')
+    # ax.set_ylabel('Y')
+    # ax.set_zlabel('Z')
+    # cb = fig.colorbar(sc, ax=ax, shrink=0.5, aspect=5)
+    # cb.set_label('Potential')
+    # plt.title('Trajectory and Corresponding Potential')
+    # plt.show()
+    # return
+    return
 
 def distance(point1, point2):
     return np.linalg.norm(np.array(point1)-np.array(point2))
@@ -555,6 +704,7 @@ if __name__ == "__main__":
     N = rospy.get_param('/N', 40)
     K_time = rospy.get_param('/K_time', 1)
     K_dist = rospy.get_param('/K_dist', 1)
+    K_obs = rospy.get_param('/K_obs', 1)
     dist_to_goal = rospy.get_param('/dist_to_goal', 1)
     no_UGV = rospy.get_param('/no_pathUGV', False)
 

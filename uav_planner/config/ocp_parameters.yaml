@@ -9,7 +9,7 @@ x_max: 10 #50
 y_min: 0 #-50
 y_max: 20 #50
 z_min: 0.5 #0.5
-z_max: 3 #5
+z_max: 3.5 #5
 r_uav: 1 # UAV radius
 
 
@@ -30,6 +30,7 @@ N: 40 # num sample optimization method
 # Cost Function:
 K_time: 1  # time weight
 K_dist: 50 # distance from other trajectory weight
+K_obs: 1
 
 # Distance to consider the goal achieved (to calculate a new trajectory)
 dist_to_goal: 0.5 
