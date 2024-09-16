@@ -4,6 +4,7 @@ import rospy
 from rockit import *
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 from numpy import pi, cos, sin, tan
 from casadi import * 
@@ -48,14 +49,14 @@ r_uav =  1
 theta_min = -0.5
 theta_max =  0.5
 v_min =  0
-v_max =  2
-w_psi_min = -1
-w_psi_max = 1
-w_theta_min =  -2
-w_theta_max =  2
+v_max =  4 #7
+w_psi_min = -3 #-0.5 #-1
+w_psi_max = 3 #1
+w_theta_min =  -3  #-2
+w_theta_max = 3 # 2
 N = 40
 K_time = 1
-K_dist = 10
+K_dist = 1
 degree = 3
 n_samples = N  # take the same value of N 
 
@@ -72,8 +73,8 @@ r_obs_val = np.array([r0_val, r1_val])
 # goal_position = np.array([9.5, 7, 2])
 goal_position = np.array([8, 1, 2])
 
-
-waypoints_3d = [(-4, -3, 0), (-2, 3, 0), (2, 1, 0), (5, 0, 0), (7, 6, 0), (9, 7, 0)]   # z=0
+waypoints_3d = [(-4, -7.5, 0), (-2, 3, 0), (2, 1, 0), (5, 0, 0), (7, 6, 0), (9, 7, 0)]   # z=0
+# waypoints_3d = [(-4, -3, 0), (-2, 3, 0), (2, 1, 0), (5, 0, 0), (7, 6, 0), (9, 7, 0)]   # z=0
 
 
 
@@ -96,8 +97,14 @@ def uav_planner(fitted_points, goal_position):
     v = ocp.control()
 
     ## Space-State form
-    ocp.set_der(x, v*sin(psi)*cos(theta))
-    ocp.set_der(y, v*cos(psi)*cos(theta))
+    # ocp.set_der(x, v*sin(psi)*cos(theta))
+    # ocp.set_der(y, v*cos(psi)*cos(theta))
+    # ocp.set_der(z, v*sin(theta))                 
+    # ocp.set_der(psi, w_psi)
+    # ocp.set_der(theta, w_theta)
+
+    ocp.set_der(x, v*cos(psi)*cos(theta))
+    ocp.set_der(y, v*sin(psi)*cos(theta))
     ocp.set_der(z, v*sin(theta))                 
     ocp.set_der(psi, w_psi)
     ocp.set_der(theta, w_theta)
@@ -138,7 +145,7 @@ def uav_planner(fitted_points, goal_position):
 
     ## Soft Consraints: Objective Function:
     # Minimal time
-    ocp.add_objective(K_time*ocp.T) # minimizza tempo finale (T)
+    # ocp.add_objective(K_time*ocp.T) # minimizza tempo finale (T)
     # Minimal distance to the other curve fitted: 
     ocp.add_objective(K_dist*ocp.integral(sumsqr(p[:2,:]-fitPts[:2,:]), grid='control')/ocp.T)  
 
@@ -166,7 +173,9 @@ def uav_planner(fitted_points, goal_position):
     t2= time.time()
     tempoEsec = t2-t1
     rospy.loginfo("Tempo di esecuzione: %f secondi" % tempoEsec)
-    return sol, x, y, z
+
+    # rospy.loginfo(f"Velocit: {sol.value(v)}")
+    return sol, x, y, z, v
 
 
 
@@ -238,7 +247,7 @@ def uav_planner_pointMass(fitted_points, goal_position):
     # Minimal time
     ocp.add_objective(K_time*ocp.T) # minimizza tempo finale (T)
     # Minimal distance to the other curve fitted: 
-    ocp.add_objective(K_dist*ocp.integral(sumsqr(p1[:2,:]-fitPts[:2,:]), grid='control')/ocp.T)  
+    ocp.add_objective(K_dist*ocp.integral(sumsqr(p1[:2,:]-fitPts[:2,:]), grid='control'))  
 
     ## Set_Initial
     ocp.set_initial(x1,0)
@@ -264,13 +273,13 @@ def uav_planner_pointMass(fitted_points, goal_position):
     t2= time.time()
     tempoEsec_modelMass = t2-t1
     rospy.loginfo("Tempo di esecuzione: %f secondi" % tempoEsec_modelMass)
-    return sol1, x1, y1, z1
+    return sol1, x1, y1, z1, x1_dot, y1_dot, z1_dot
 
 
 ## Plot OCP_Path in matplotlibs
-def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
+def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points, x1_dot, y1_dot, z1_dot):
 
-    fig = plt.figure()
+    fig = plt.figure(1)
     plot = fig.add_subplot(projection='3d',aspect='equal')
     plot.set_xlabel('X-Position (m)')
     plot.set_ylabel('Y-Position (m)')
@@ -280,15 +289,16 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
     plot.set_zticks(range(-2, 7, 2))
 
     # Sample data from sol and variables x, y, z
-    ts, xs = sol.sample(x, grid='control')
-    ts, ys = sol.sample(y, grid='control')
-    ts, zs = sol.sample(z, grid='control')  
-    plot.scatter(xs, ys, zs, c='b', marker='o')
+    # ts, xs = sol.sample(x, grid='control')
+    # ts, ys = sol.sample(y, grid='control')
+    # ts, zs = sol.sample(z, grid='control')  
+    # plot.scatter(xs, ys, zs, c='b', marker='o')
 
-    ts, xs = sol.sample(x, grid='integrator', refine=10)
-    ts, ys = sol.sample(y, grid='integrator', refine=10)
-    ts, zs = sol.sample(z, grid='integrator', refine=10)  
+    tsSol, xs = sol.sample(x, grid='integrator')
+    tsSol, ys = sol.sample(y, grid='integrator')
+    tsSol, zs = sol.sample(z, grid='integrator')  
     plot.plot(xs, ys, zs, '-',label="UAV Trajectory")
+    plot.scatter(goal_position[0],goal_position[1],goal_position[2], color='m', s=80, marker='o', label="UAV Goal")
 
     ## Plot a CIRCLE in 3D space
     ts = np.linspace(0, 2 * np.pi, 1000)
@@ -311,7 +321,10 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
 
         plot.plot_surface(x_sphere, y_sphere, z_sphere, color='r', alpha=1)
 
-    plot.plot(fitted_points[0,:],fitted_points[1,:],fitted_points[2,:], marker='^', color='g', label="UGV trajectory")
+
+    plot.plot(fitted_points[0,:],fitted_points[1,:],fitted_points[2,:], linestyle='-', color='g', label="UGV trajectory")
+    plot.scatter(fitted_points[0,-1], fitted_points[1,-1], fitted_points[2,-1], 
+                color='b', s=80, label="UGV Goal", marker='o')
 
     # Set axis to be equal
     # plot.set_box_aspect([1,1,1]) 
@@ -320,10 +333,10 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
     plot.set_title('Dubins Model', fontsize=16, fontweight='bold')    
     plot.legend()
     # Show the plot
-    plt.show(block=False)  # block=True --> mostra il plot e il processo principale del programma viene bloccato finchè non si chiude la finestra plot (il programma è in attesa)
+    #plt.show(block=False)  # block=True --> mostra il plot e il processo principale del programma viene bloccato finchè non si chiude la finestra plot (il programma è in attesa)
 
     ##### Plot Traj modelPointMass
-    fig1 = plt.figure()
+    fig1 = plt.figure(2)
     plot1 = fig1.add_subplot(projection='3d',aspect='equal')
     plot1.set_xlabel('X-Position (m)')
     plot1.set_ylabel('Y-Position (m)')
@@ -333,15 +346,17 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
     plot1.set_zticks(range(-2, 7, 2))
 
     # Sample data from sol and variables x, y, z
-    ts1, xs1 = sol1.sample(x1, grid='control')
-    ts1, ys1 = sol1.sample(y1, grid='control')
-    ts1, zs1 = sol1.sample(z1, grid='control')  
-    plot1.scatter(xs1, ys1, zs1, c='b', marker='o')
+    # ts1, xs1 = sol1.sample(x1, grid='control')
+    # ts1, ys1 = sol1.sample(y1, grid='control')
+    # ts1, zs1 = sol1.sample(z1, grid='control')  
+    # plot1.scatter(xs1, ys1, zs1, c='b', marker='o')
 
     ts1, xs1 = sol1.sample(x1, grid='integrator', refine=10)
     ts1, ys1 = sol1.sample(y1, grid='integrator', refine=10)
     ts1, zs1 = sol1.sample(z1, grid='integrator', refine=10)  
     plot1.plot(xs1, ys1, zs1, '-',label="UAV Trajectory")
+    # plot.scatter(goal_position[0],goal_position[1],goal_position[2], color='m', s=80, marker='o', label="UAV Goal")
+
 
     ## Plot a CIRCLE in 3D space
     ts1 = np.linspace(0, 2 * np.pi, 1000)
@@ -357,7 +372,9 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
 
         plot1.plot_surface(x_sphere, y_sphere, z_sphere, color='r', alpha=1)
 
-    plot1.plot(fitted_points[0,:],fitted_points[1,:],fitted_points[2,:], marker='^', color='g', label="UGV trajectory")
+    plot1.plot(fitted_points[0,:],fitted_points[1,:],fitted_points[2,:], linestyle='-', color='g', label="UGV trajectory")
+    # plot.scatter(fitted_points[0,-1], fitted_points[1,-1], fitted_points[2,-1], 
+                # color='b', s=80, label="UGV Goal", marker='o')
 
     # Set axis to be equal
     plot1.set_box_aspect([ub - lb for lb, ub in (getattr(plot1, f'get_{a}lim')() for a in 'xyz')])
@@ -365,7 +382,45 @@ def plot_planning(sol,x ,y, z, sol1,x1,y1,z1, fitted_points):
     plot1.set_title('Point-Mass Model', fontsize=16, fontweight='bold')    
     plot1.legend()
     # Show the plot
-    plt.show(block=False)
+    #plt.show(block=False)
+
+
+    ### Plot Velocità Dubins
+    vxs = np.diff(xs) / np.diff(tsSol)
+    vys = np.diff(ys) / np.diff(tsSol)
+    vzs = np.diff(zs) / np.diff(tsSol)
+
+    plt.figure(3)
+    plt.plot(tsSol[:-1], vxs, label="Vx")
+    plt.plot(tsSol[:-1], vys, label="Vy")
+    plt.plot(tsSol[:-1], vzs, label="Vz")
+    plt.xlim((0,40))
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity (m/s)')
+    plt.title('Velocity Dubins Model',fontsize=16, fontweight='bold')
+    plt.grid(True)
+    plt.legend()
+   # plt.show(block=False)
+
+    ### Plot Velocità Point Mass
+    tsSol1, vx = sol1.sample(x1_dot, grid='integrator')
+    tsSol1, vy = sol1.sample(y1_dot, grid='integrator')
+    tsSol1, vz = sol1.sample(z1_dot, grid='integrator')
+
+    v_magnitude = np.sqrt(vx**2 + vy**2 + vz**2)
+
+    plt.figure(4)
+    plt.plot(tsSol1, vx, label="Vx")
+    plt.plot(tsSol1, vy, label="Vy")
+    plt.plot(tsSol1, vz, label="Vz")
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity (m/s)')
+    plt.title('Velocity Point-Mass Model',fontsize=16, fontweight='bold')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
 
 
 
@@ -415,8 +470,8 @@ if __name__ == "__main__":
     rospy.init_node('uav_path_planning')
 
     fitted_points = get_fitted_points()
-    sol, x, y, z = uav_planner(fitted_points, goal_position)
-    sol1, x1, y1, z1 = uav_planner_pointMass(fitted_points, goal_position)
-    plot_planning(sol, x, y, z, sol1, x1, y1, z1, fitted_points)
-    plot_curve_fit(fitted_points, curve_fit)
+    sol, x, y, z, v = uav_planner(fitted_points, goal_position)
+    sol1, x1, y1, z1, x1_dot, y1_dot, z1_dot = uav_planner_pointMass(fitted_points, goal_position)
+    plot_planning(sol, x, y, z, sol1, x1, y1, z1, fitted_points, x1_dot, y1_dot, z1_dot)
+    # plot_curve_fit(fitted_points, curve_fit)
 

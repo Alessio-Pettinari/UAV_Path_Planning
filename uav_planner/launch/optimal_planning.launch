@@ -4,10 +4,14 @@
     <arg name="namespace" default="drone"/>
     <arg name="obstacle_info" default="obstacle_cluster_info"/>
     <arg name="odometry_drone" default="/mavros/local_position/odom"/>
-    <arg name="wp_rosbot" default="/first/first_move_base/TrajectoryPlannerROS/global_plan"/>
+    <arg name="odometry_UGV" default="/first/odom_ft"/>
+    <!-- <arg name="wp_rosbot" default="/first/first_move_base/TrajectoryPlannerROS/global_plan"/> -->
+    <arg name="wp_rosbot" default="/first/global_path"/>
     <arg name="frontier_goal" default="exploration/goal"/>
-    <arg name="free_space" default="eq_convexHull"/>
-
+    <arg name="frontier_goal_UGV" default="/first/exploration/goal"/>
+    <arg name="free_voxel" default="free_voxel" />
+    <arg name="ugv_goal_reach" default="/first/GoalReached" />
+    <arg name="uav_updateGoal" default="/drone/UpdateGoal" />
 
 
     <!-- Load OCP_Parameters from file YAML -->
@@ -19,8 +23,13 @@
             <remap from="odometry_drone" to="$(arg odometry_drone)"/>
             <remap from="wp_rosbot" to="$(arg wp_rosbot)"/>
             <remap from="frontier_goal" to="$(arg frontier_goal)"/>
-            <remap from="free_space" to="$(arg free_space)"/>
-        </node>
+            <remap from="free_voxel" to="$(arg free_voxel)" />
+            <remap from="odometry_UGV" to="$(arg odometry_UGV)"/>
+            <remap from="frontier_goal_UGV" to="$(arg frontier_goal_UGV)"/>
+            <remap from="ugv_goal_reach" to="$(arg ugv_goal_reach)"/>
+            <remap from="uav_updateGoal" to="$(arg uav_updateGoal)"/>
+        </node>            
+
     </group>
 
 </launch>

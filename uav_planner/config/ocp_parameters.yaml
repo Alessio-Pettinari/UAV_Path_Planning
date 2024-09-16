@@ -28,12 +28,12 @@ w_theta_max: 1 #2
 N: 40 # num sample optimization method
 
 # Cost Function:
-K_time: 1  # time weight
-K_dist: 50 # distance from other trajectory weight
-K_obs: 1
+K_time: 0.5  # time weight
+K_dist: 20 #8 #4 # distance from other trajectory weight
+K_obs: 5 #2 #6
 
 # Distance to consider the goal achieved (to calculate a new trajectory)
 dist_to_goal: 0.5 
 
 # Parameter to disregard UGV trajectory (UAV path without distance to UGV trajectory): set True for not consider UGV path
-no_pathUGV: True
+no_pathUGV: False
